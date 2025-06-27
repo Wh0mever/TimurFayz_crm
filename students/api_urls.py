@@ -33,6 +33,14 @@ urlpatterns = [
                 )
             ),
             path(
+                '<int:pk>/transfer-to-group/',
+                api_views.StudentViewSet.as_view(
+                    {
+                        'post': 'transfer_student_to_group',
+                    }
+                )
+            ),
+            path(
                 'create-options/',
                 api_views.StudentViewSet.as_view(
                     {

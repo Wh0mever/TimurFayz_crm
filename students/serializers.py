@@ -211,6 +211,12 @@ class StudentDetailSerializer(serializers.ModelSerializer):
         )
 
 
+class StudentTransferToGroupSerializer(serializers.Serializer):
+    group_from = serializers.PrimaryKeyRelatedField(queryset=StudyGroup.objects.all(), required=True)
+    group_to = serializers.PrimaryKeyRelatedField(queryset=StudyGroup.objects.all(), required=True)
+    joined_date = serializers.DateField(required=True)
+
+
 class StudentTransactionSerializer(DynamicFieldsSerializerMixin, serializers.ModelSerializer):
     student_obj = StudentSerializer(
         source='student',

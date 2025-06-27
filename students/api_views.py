@@ -21,12 +21,13 @@ from students.serializers import StudentSerializer, StudyGroupSerializer, StudyG
     StudyLessonSerializer, StudyGroupUpdateSerializer, StudyGroupDaySerializer, StudentVisitSerializer, \
     StudentBalanceAdjustmentSerializer, StudentTransactionSerializer, StudentBonusSerializer, \
     StudentBalanceReportSerializer, StudentBonusUpdateSerializer, StudentBalanceAdjustmentUpdateSerializer, \
-    StudentIdListSerializer
+    StudentIdListSerializer, StudentTransferToGroupSerializer
 from students.services import add_students_to_group, update_group_students_list, \
     create_group_lessons_by_study_day, create_student_visit, delete_student_visit, \
     delete_group_lessons_by_study_date, update_study_day, increase_student_balance, decrease_student_balance, \
     add_student_to_groups, create_student_bonus, handle_student_bonus_delete, \
-    get_student_debit_credit_report, recalculate_group_transactions, generate_student_account_number
+    get_student_debit_credit_report, recalculate_group_transactions, generate_student_account_number, \
+    transfer_student_to_group
 from user.enums import UserType
 
 
@@ -38,6 +39,7 @@ class StudentViewSet(MultiSerializerViewSetMixin, DestroyFlagsViewSetMixin, Mode
         'create': StudentSerializer,
         'partial_update': StudentSerializer,
         'get_student_balance_report': StudentBalanceReportSerializer,
+        'transfer_student_to_group': StudentTransferToGroupSerializer,
     }
     pagination_class = CustomPagination
     filter_backends = [
@@ -100,6 +102,19 @@ class StudentViewSet(MultiSerializerViewSetMixin, DestroyFlagsViewSetMixin, Mode
         transactions = get_student_debit_credit_report(student)
         serializer = self.get_serializer(transactions, many=True)
         return Response(serializer.data)
+
+    def transfer_student_to_group(self, request, *args, **kwargs):
+        student = self.get_object()
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        validated_data = serializer.validated_data
+        transfer_student_to_group(
+            student=student,
+            group_from=validated_data.get('group_from'),
+            group_to=validated_data.get('group_to'),
+            joined_date=validated_data.get('joined_date'),
+        )
+        return Response({'success': True})
 
     def get_create_options(self, request, *args, **kwargs):
         gender_options = [{'value': option[0], 'label': option[1]} for option in Gender.choices]

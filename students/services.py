@@ -259,6 +259,24 @@ def update_student_groups_list(student, group_ids: list):
         remove_student_from_groups(student, removed_group_ids)
 
 
+def transfer_student_to_group(student: Student, group_from: StudyGroup, group_to: StudyGroup, joined_date: datetime):
+    with transaction.atomic():
+        remove_student_from_groups(student, [group_from.id])
+        transactions = StudentTransaction.objects.filter(
+            student=student,
+            group_id=group_from.id,
+            joined_date__gte=joined_date.replace(day=1),
+        )
+        transactions_sum = transactions.aggregate(amount_sum=Sum('amount', default=0))['amount_sum']
+
+        with transaction.atomic():
+            transactions.delete()
+            increase_student_balance(student.id, transactions_sum)
+            student.refresh_from_db(fields=['balance'])
+
+        add_student_to_groups(student, [group_from.id], joined_date)
+
+
 def recalculate_group_transactions(group: StudyGroup):
     today = datetime.today()
     students = Student.objects.filter(groups__in=group.students.all())
