@@ -76,7 +76,7 @@ class StudyGroupUpdateSerializer(serializers.ModelSerializer):
     student_ids = serializers.ListField(
         child=serializers.IntegerField(), write_only=True, required=False
     )
-    joined_date = serializers.DateField(required=False)
+    joined_date = serializers.DateTimeField(required=False)
 
     class Meta:
         model = StudyGroup
