@@ -265,7 +265,7 @@ def transfer_student_to_group(student: Student, group_from: StudyGroup, group_to
         transactions = StudentTransaction.objects.filter(
             student=student,
             group_id=group_from.id,
-            joined_date__gte=joined_date.replace(day=1),
+            transaction_date__gte=joined_date.replace(day=1),
         )
         transactions_sum = transactions.aggregate(amount_sum=Sum('amount', default=0))['amount_sum']
 
