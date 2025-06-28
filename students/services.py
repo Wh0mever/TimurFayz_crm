@@ -269,12 +269,11 @@ def transfer_student_to_group(student: Student, group_from: StudyGroup, group_to
         )
         transactions_sum = transactions.aggregate(amount_sum=Sum('amount', default=0))['amount_sum']
 
-        with transaction.atomic():
-            transactions.delete()
-            increase_student_balance(student.id, transactions_sum)
-            student.refresh_from_db(fields=['balance'])
+        transactions.delete()
+        increase_student_balance(student.id, transactions_sum)
+        student.refresh_from_db(fields=['balance'])
 
-        add_student_to_groups(student, [group_from.id], joined_date)
+        add_student_to_groups(student, [group_to.id], joined_date)
 
 
 def recalculate_group_transactions(group: StudyGroup):
