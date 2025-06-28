@@ -100,7 +100,7 @@ class StudyGroupUpdateSerializer(serializers.ModelSerializer):
 
     def validate_joined_date(self, value):
         if value:
-            if value.date() > self.instance.end_date or value < self.instance.start_date:
+            if value.date() > self.instance.end_date or value.date()  < self.instance.start_date:
                 raise serializers.ValidationError({'joined_date': "Дата должна быть в пределах даты обучения группы"})
         return value
 
