@@ -180,7 +180,7 @@ class StudyGroupViewSet(MultiSerializerViewSetMixin, DestroyFlagsViewSetMixin, M
             student_ids = serializer.validated_data.pop('student_ids', None)
             if student_ids is not None:
                 joined_date = serializer.validated_data.pop('joined_date', None)
-                joined_date = joined_date.date if joined_date else None
+                joined_date = joined_date.date() if joined_date else None
                 update_group_students_list(instance, student_ids, joined_date)
 
             current_start_date = instance.start_date
