@@ -118,7 +118,6 @@ class StudentSerializer(DynamicFieldsSerializerMixin, serializers.ModelSerialize
     #     child=serializers.IntegerField(), write_only=True, required=False
     # )
     group_names = serializers.SerializerMethodField(read_only=True)
-
     group_ids = serializers.SerializerMethodField(read_only=True)
     joined_date = serializers.DateField(required=False)
 
@@ -137,6 +136,7 @@ class StudentSerializer(DynamicFieldsSerializerMixin, serializers.ModelSerialize
             'department',
             'avatar',
             'avatar_upload',
+            'group',
             'marked_for_delete',
             'group_ids',
             'joined_date',
