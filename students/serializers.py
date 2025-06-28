@@ -119,6 +119,7 @@ class StudentSerializer(DynamicFieldsSerializerMixin, serializers.ModelSerialize
     # )
     group_names = serializers.SerializerMethodField(read_only=True)
     group_ids = serializers.SerializerMethodField(read_only=True)
+    group = serializers.PrimaryKeyRelatedField(queryset=StudyGroup.objects.all(), required=False)
     joined_date = serializers.DateField(required=False)
 
     class Meta:
