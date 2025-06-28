@@ -119,7 +119,7 @@ class StudentSerializer(DynamicFieldsSerializerMixin, serializers.ModelSerialize
     # )
     group_names = serializers.SerializerMethodField(read_only=True)
     group_ids = serializers.SerializerMethodField(read_only=True)
-    group = serializers.PrimaryKeyRelatedField(queryset=StudyGroup.objects.all(), required=False)
+    group = serializers.PrimaryKeyRelatedField(queryset=StudyGroup.objects.all(), required=False, write_only=True)
     joined_date = serializers.DateField(required=False)
 
     class Meta:
@@ -193,7 +193,7 @@ class StudyGroupDetailSerializer(serializers.ModelSerializer):
         field=StudentSerializer(many=True)
     )
     def get_students(self, obj: StudyGroup):
-        students = Student.objects.get_available().filter(groups__in=obj.students.all())
+        students = Student.objects.get_available().filter(groups__in=obj.students.all()).distinct()
         return StudentSerializer(instance=students, many=True).data
 
 
