@@ -1,6 +1,5 @@
 from collections import OrderedDict
 
-from django.utils import timezone
 from rest_framework import viewsets, pagination
 from rest_framework.response import Response
 
@@ -18,6 +17,8 @@ class MultiSerializerViewSetMixin:
 class DestroyFlagsViewSetMixin:
 
     def destroy(self, request, *args, **kwargs):
+        from django.utils import timezone
+
         obj = self.get_object()
         obj.is_deleted = True
         obj.is_active = False
