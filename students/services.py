@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, date
+from decimal import Decimal
 from typing import Iterable
 
 from dateutil.relativedelta import relativedelta
@@ -401,3 +402,137 @@ def get_student_debit_credit_report(student: Student):
         item['balance_after'] = balance
 
     return balance_changes
+
+
+def _transfer_refund_sum(student: Student, group_from: StudyGroup, joined_date: date):
+    """Сумма списаний старой группы, которые вернёт transfer_student_to_group.
+
+    Повторяет фильтр из transfer_student_to_group один в один — используется
+    для dry-run предпросмотра и отчёта, сама денег не трогает.
+    """
+    return StudentTransaction.objects.filter(
+        student=student,
+        group_id=group_from.id,
+        transaction_date__gte=joined_date.replace(day=1),
+    ).aggregate(amount_sum=Sum('amount', default=0))['amount_sum']
+
+
+def mass_transfer_students(group_from: StudyGroup, group_to: StudyGroup, student_ids: Iterable,
+                           joined_date: date, dry_run: bool = False):
+    """Массовый перенос студентов между группами (перевод на следующий класс).
+
+    Оркестрация боевого transfer_student_to_group: никакой новой денежной логики.
+    - переносятся только активные студенты, реально привязанные к group_from;
+    - уже привязанные к group_to пропускаются (дедуп — unique-констрейнта в БД нет,
+      двойная привязка означала бы двойное списание кроном);
+    - dry_run=True считает те же суммы (возврат старой группы + до-начисление новой),
+      ничего не записывая;
+    - применение — в одной транзакции: упало на любом студенте → откатилось всё,
+      повторный запуск того же запроса — no-op по уже перенесённым.
+    """
+    today = datetime.today()
+    months_passed = get_diff_month(joined_date, today)
+    back_months = months_passed + 1 if months_passed >= 0 else 0
+
+    requested_ids = set(student_ids)
+    eligible = list(
+        Student.objects.get_available()
+        .filter(id__in=requested_ids, groups__group=group_from)
+        .distinct()
+    )
+    eligible_ids = {s.id for s in eligible}
+
+    already_in_target = set(
+        StudentToGroup.objects.filter(group=group_to, student_id__in=eligible_ids)
+        .values_list('student_id', flat=True)
+    )
+
+    skipped = []
+    missing_ids = requested_ids - eligible_ids
+    if missing_ids:
+        missing_names = dict(Student.objects.filter(id__in=missing_ids).values_list('id', 'full_name'))
+        for student_id in sorted(missing_ids):
+            skipped.append({
+                'student_id': student_id,
+                'full_name': missing_names.get(student_id, f'ID {student_id}'),
+                'reason': 'Не найден среди активных студентов группы-источника',
+            })
+
+    to_transfer = []
+    for student in eligible:
+        if student.id in already_in_target:
+            skipped.append({
+                'student_id': student.id,
+                'full_name': student.full_name,
+                'reason': 'Уже состоит в целевой группе',
+            })
+        else:
+            to_transfer.append(student)
+
+    rows = []
+    if dry_run:
+        for student in to_transfer:
+            refund = _transfer_refund_sum(student, group_from, joined_date)
+            charge = group_to.price * back_months
+            rows.append({
+                'student_id': student.id,
+                'full_name': student.full_name,
+                'balance_before': str(student.balance),
+                'refund': str(refund),
+                'charge': str(charge),
+                'balance_after': str(student.balance + refund - charge),
+            })
+    else:
+        with transaction.atomic():
+            for student in to_transfer:
+                balance_before = student.balance
+                refund = _transfer_refund_sum(student, group_from, joined_date)
+                transfer_student_to_group(
+                    student=student,
+                    group_from=group_from,
+                    group_to=group_to,
+                    joined_date=joined_date,
+                )
+                student.refresh_from_db(fields=['balance'])
+                rows.append({
+                    'student_id': student.id,
+                    'full_name': student.full_name,
+                    'balance_before': str(balance_before),
+                    'refund': str(refund),
+                    'charge': str(group_to.price * back_months),
+                    'balance_after': str(student.balance),
+                })
+
+    warnings = []
+    if group_to.price == 0:
+        warnings.append(
+            'Цена целевой группы — 0 сум: ежемесячные списания будут нулевыми. '
+            'Проверьте цену группы до 1-го числа.'
+        )
+    if back_months > 0 and to_transfer:
+        warnings.append(
+            f'Дата зачисления в прошлом: каждому студенту будет до-начислено '
+            f'{back_months} мес. × {group_to.price} сум по новой группе.'
+        )
+    total_refund = sum(Decimal(r['refund']) for r in rows) if rows else Decimal(0)
+    if total_refund > 0:
+        warnings.append(
+            'Студентам будут возвращены списания старой группы начиная с месяца даты зачисления '
+            f'(всего {total_refund} сум).'
+        )
+
+    return {
+        'dry_run': dry_run,
+        'group_from': {'id': group_from.id, 'name': group_from.name},
+        'group_to': {'id': group_to.id, 'name': group_to.name, 'price': str(group_to.price)},
+        'joined_date': joined_date.isoformat(),
+        'students': rows,
+        'skipped': skipped,
+        'totals': {
+            'count': len(rows),
+            'skipped_count': len(skipped),
+            'refund_sum': str(total_refund),
+            'charge_sum': str(sum(Decimal(r['charge']) for r in rows) if rows else Decimal(0)),
+        },
+        'warnings': warnings,
+    }

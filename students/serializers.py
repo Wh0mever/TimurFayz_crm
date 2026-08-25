@@ -276,3 +276,16 @@ class StudentIdListSerializer(serializers.Serializer):
     student_ids = serializers.ListField(
         child=serializers.IntegerField(), write_only=True, required=False
     )
+
+
+class StudentMassTransferSerializer(serializers.Serializer):
+    student_ids = serializers.ListField(child=serializers.IntegerField(), allow_empty=False)
+    group_from = serializers.PrimaryKeyRelatedField(queryset=StudyGroup.objects.all(), required=True)
+    group_to = serializers.PrimaryKeyRelatedField(queryset=StudyGroup.objects.all(), required=True)
+    joined_date = serializers.DateField(required=True)
+    dry_run = serializers.BooleanField(default=False)
+
+    def validate(self, attrs):
+        if attrs['group_from'] == attrs['group_to']:
+            raise serializers.ValidationError('Группа-источник и целевая группа не могут совпадать')
+        return attrs
