@@ -7,3 +7,4 @@ class UserType(models.TextChoices):
     CASHIER = "CASHIER", "Кассир"
     ACCOUNTANT = "ACCOUNTANT", "Бухгалтер"
     TEACHER = "TEACHER", "Учитель"
+    CASHIER_MANAGER = "CASHIER-MANAGER", "Кассир-менеджер"

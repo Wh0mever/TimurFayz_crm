@@ -129,7 +129,7 @@ class Worker(models.Model):
     department = models.CharField(
         max_length=50,
         choices=DepartmentChoices.choices,
-        default=DepartmentChoices.SCHOOL,
+        default=DepartmentChoices.KINDERGARTEN,
         null=True,
         blank=True,
         verbose_name="Отдел"

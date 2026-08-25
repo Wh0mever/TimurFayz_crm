@@ -116,7 +116,7 @@ class OutlayCategory(FlagsModel):
     department = models.CharField(
         max_length=50,
         choices=DepartmentChoices.choices,
-        default=DepartmentChoices.SCHOOL,
+        default=DepartmentChoices.KINDERGARTEN,
         verbose_name="Отдел"
     )
 

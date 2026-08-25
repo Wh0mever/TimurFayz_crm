@@ -64,7 +64,7 @@ def process_student_payment_create(payment: Payment, student: Student):
     increase_student_balance(student.pk, amount)
     student.refresh_from_db(fields=['balance'])
     payment.student_balance_after = student.balance
-    send_sms_to_student(student, settings.STUDENT_PAYMENT_CREATE_SMS_TEMPLATE.format(payment.amount, student.full_name))
+    #send_sms_to_student(student, settings.STUDENT_PAYMENT_CREATE_SMS_TEMPLATE.format(payment.amount, student.full_name))
 
 
 def process_payment_delete(payment: Payment):

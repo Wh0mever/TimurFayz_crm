@@ -17,6 +17,6 @@ class Gender(TextChoices):
 
 
 class DepartmentChoices(TextChoices):
-    SCHOOL = "SCHOOL", "Школа"
+    # SCHOOL = "SCHOOL", "Школа"
     KINDERGARTEN = "KINDERGARTEN", "Детский сад"
-    CAMP = "CAMP", "Лагерь"
+    # CAMP = "CAMP", "Лагерь"
