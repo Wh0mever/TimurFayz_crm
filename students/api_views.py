@@ -424,9 +424,10 @@ class MassDeleteStudents(APIView):
 
     @extend_schema(request=StudentIdsRequiredSerializer())
     def post(self, request, *args, **kwargs):
-        if request.user.user_type not in [UserType.ADMIN, UserType.MANAGER]:
+        # Массовое удаление — ТОЛЬКО администратор (требование клиента).
+        if request.user.user_type != UserType.ADMIN:
             return Response(
-                data={'detail': 'Недостаточно прав для массового удаления студентов'},
+                data={'detail': 'Массовое удаление доступно только администратору'},
                 status=403,
             )
 
@@ -441,9 +442,10 @@ class MassRestoreStudents(APIView):
 
     @extend_schema(request=StudentIdsRequiredSerializer())
     def post(self, request, *args, **kwargs):
-        if request.user.user_type not in [UserType.ADMIN, UserType.MANAGER]:
+        # Отмена массового удаления — ТОЛЬКО администратор (как и само удаление).
+        if request.user.user_type != UserType.ADMIN:
             return Response(
-                data={'detail': 'Недостаточно прав для восстановления студентов'},
+                data={'detail': 'Восстановление доступно только администратору'},
                 status=403,
             )
 
