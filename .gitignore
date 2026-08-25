@@ -70,3 +70,4 @@ cache/
 /.idea/
 /pycache/
 /.env
+backups/

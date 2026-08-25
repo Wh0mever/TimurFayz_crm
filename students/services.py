@@ -1,3 +1,6 @@
+import gzip
+import json
+import os
 from datetime import datetime, timedelta, date
 from decimal import Decimal
 from typing import Iterable
@@ -6,6 +9,8 @@ from dateutil.relativedelta import relativedelta
 from django.db import IntegrityError, transaction
 from django.db.models import F, Sum, Case, When, Value, DateField, DecimalField, DateTimeField, BooleanField, TextField
 from django.db.models.functions import Abs, Cast
+from django.conf import settings
+from django.core import serializers as dj_serializers
 from django.utils import timezone
 
 from students.exception import StudyGroupDayAlreadyExists, StudentAlreadyVisitedLesson, StudentNotFromThisGroup
@@ -418,6 +423,44 @@ def _transfer_refund_sum(student: Student, group_from: StudyGroup, joined_date: 
     ).aggregate(amount_sum=Sum('amount', default=0))['amount_sum']
 
 
+class MassOperationBackupError(Exception):
+    """Бэкап перед массовой операцией не создан — операция должна быть отменена."""
+
+
+def create_mass_operation_snapshot(tag: str, student_ids: Iterable, operation_params: dict = None) -> str:
+    """Файловый бэкап затронутых записей ПЕРЕД массовой операцией.
+
+    Требование клиента: возможность бэкапа в любых случаях. Пишет gzip-JSON
+    с полным состоянием студентов, их привязок к группам и транзакций
+    (django-сериализация — восстанавливается с исходными PK).
+    Восстановление: python restore_mass_op_snapshot.py <файл>.
+    Любая ошибка записи -> MassOperationBackupError, операция НЕ выполняется.
+    """
+    try:
+        ids = sorted(set(int(i) for i in student_ids))
+        payload = {
+            'tag': tag,
+            'created_at': datetime.now().isoformat(),
+            'operation': operation_params or {},
+            'student_ids': ids,
+            'students': dj_serializers.serialize('json', Student.objects.filter(id__in=ids)),
+            'student_to_group': dj_serializers.serialize('json', StudentToGroup.objects.filter(student_id__in=ids)),
+            'transactions': dj_serializers.serialize('json', StudentTransaction.objects.filter(student_id__in=ids)),
+        }
+        backup_dir = os.path.join(settings.BASE_DIR, 'backups', 'mass_operations')
+        os.makedirs(backup_dir, exist_ok=True)
+        filename = '%s_%s.json.gz' % (datetime.now().strftime('%Y-%m-%d_%H-%M-%S'), tag)
+        path = os.path.join(backup_dir, filename)
+        with gzip.open(path, 'wt', encoding='utf-8') as f:
+            json.dump(payload, f, ensure_ascii=False)
+        # контрольное чтение: бэкап обязан быть валидным
+        with gzip.open(path, 'rt', encoding='utf-8') as f:
+            json.load(f)
+        return path
+    except Exception as e:
+        raise MassOperationBackupError(str(e))
+
+
 def mass_transfer_students(group_from: StudyGroup, group_to: StudyGroup, student_ids: Iterable,
                            joined_date: date, dry_run: bool = False):
     """Массовый перенос студентов между группами (перевод на следующий класс).
@@ -484,6 +527,15 @@ def mass_transfer_students(group_from: StudyGroup, group_to: StudyGroup, student
                 'balance_after': str(student.balance + refund - charge),
             })
     else:
+        backup_path = create_mass_operation_snapshot(
+            'mass_transfer',
+            [student.id for student in to_transfer],
+            {
+                'group_from': group_from.id,
+                'group_to': group_to.id,
+                'joined_date': joined_date.isoformat(),
+            },
+        )
         with transaction.atomic():
             for student in to_transfer:
                 balance_before = student.balance
@@ -529,6 +581,7 @@ def mass_transfer_students(group_from: StudyGroup, group_to: StudyGroup, student
         'joined_date': joined_date.isoformat(),
         'students': rows,
         'skipped': skipped,
+        'backup_file': os.path.basename(backup_path) if not dry_run and to_transfer else None,
         'totals': {
             'count': len(rows),
             'skipped_count': len(skipped),
@@ -549,6 +602,9 @@ def mass_delete_students(student_ids: Iterable, user):
     """
     students = Student.objects.get_available().filter(id__in=set(student_ids))
     deleted = list(students.values('id', 'full_name'))
+    backup_path = create_mass_operation_snapshot(
+        'mass_delete', [d['id'] for d in deleted],
+    ) if deleted else None
     with transaction.atomic():
         students.update(
             is_deleted=True,
@@ -556,13 +612,16 @@ def mass_delete_students(student_ids: Iterable, user):
             deleted_user=user,
             deleted_at=timezone.now(),
         )
-    return deleted
+    return deleted, (os.path.basename(backup_path) if backup_path else None)
 
 
 def mass_restore_students(student_ids: Iterable):
     """Отмена массового удаления: возвращает мягко удалённых студентов."""
     students = Student.objects.filter(id__in=set(student_ids), is_deleted=True)
     restored = list(students.values('id', 'full_name'))
+    backup_path = create_mass_operation_snapshot(
+        'mass_restore', [r['id'] for r in restored],
+    ) if restored else None
     with transaction.atomic():
         students.update(
             is_deleted=False,
@@ -570,4 +629,4 @@ def mass_restore_students(student_ids: Iterable):
             deleted_user=None,
             deleted_at=None,
         )
-    return restored
+    return restored, (os.path.basename(backup_path) if backup_path else None)
