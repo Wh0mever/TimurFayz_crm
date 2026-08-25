@@ -6,6 +6,7 @@ from dateutil.relativedelta import relativedelta
 from django.db import IntegrityError, transaction
 from django.db.models import F, Sum, Case, When, Value, DateField, DecimalField, DateTimeField, BooleanField, TextField
 from django.db.models.functions import Abs, Cast
+from django.utils import timezone
 
 from students.exception import StudyGroupDayAlreadyExists, StudentAlreadyVisitedLesson, StudentNotFromThisGroup
 from students.helpers import get_diff_month
@@ -536,3 +537,37 @@ def mass_transfer_students(group_from: StudyGroup, group_to: StudyGroup, student
         },
         'warnings': warnings,
     }
+
+
+def mass_delete_students(student_ids: Iterable, user):
+    """Массовое мягкое удаление студентов.
+
+    Отличие от одиночного destroy: account_number НЕ обнуляется — это позволяет
+    «Отмене» (mass_restore_students) вернуть студента ровно в исходное состояние.
+    Номера генерируются как max+1 (generate_student_account_number), поэтому
+    сохранённый номер удалённого студента конфликтов не создаёт.
+    """
+    students = Student.objects.get_available().filter(id__in=set(student_ids))
+    deleted = list(students.values('id', 'full_name'))
+    with transaction.atomic():
+        students.update(
+            is_deleted=True,
+            is_active=False,
+            deleted_user=user,
+            deleted_at=timezone.now(),
+        )
+    return deleted
+
+
+def mass_restore_students(student_ids: Iterable):
+    """Отмена массового удаления: возвращает мягко удалённых студентов."""
+    students = Student.objects.filter(id__in=set(student_ids), is_deleted=True)
+    restored = list(students.values('id', 'full_name'))
+    with transaction.atomic():
+        students.update(
+            is_deleted=False,
+            is_active=True,
+            deleted_user=None,
+            deleted_at=None,
+        )
+    return restored

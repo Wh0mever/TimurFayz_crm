@@ -283,3 +283,9 @@ class StudentMassTransferSerializer(serializers.Serializer):
         if attrs['group_from'] == attrs['group_to']:
             raise serializers.ValidationError('Группа-источник и целевая группа не могут совпадать')
         return attrs
+
+
+class StudentIdsRequiredSerializer(serializers.Serializer):
+    """Строгий список id студентов для массовых операций (в отличие от
+    StudentIdListSerializer список обязателен и не может быть пустым)."""
+    student_ids = serializers.ListField(child=serializers.IntegerField(), allow_empty=False)
