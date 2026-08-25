@@ -402,10 +402,10 @@ class MassTransferStudents(APIView):
 
     @extend_schema(request=StudentMassTransferSerializer())
     def post(self, request, *args, **kwargs):
-        # Массовая денежная операция — только админ и менеджер.
-        if request.user.user_type not in [UserType.ADMIN, UserType.MANAGER]:
+        # Массовая денежная операция — ТОЛЬКО администратор (требование клиента).
+        if request.user.user_type != UserType.ADMIN:
             return Response(
-                data={'detail': 'Недостаточно прав для массового переноса студентов'},
+                data={'detail': 'Массовый перенос доступен только администратору'},
                 status=403,
             )
 
