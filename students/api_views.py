@@ -23,13 +23,13 @@ from students.serializers import StudentSerializer, StudyGroupSerializer, StudyG
     StudyLessonSerializer, StudyGroupUpdateSerializer, StudyGroupDaySerializer, StudentVisitSerializer, \
     StudentBalanceAdjustmentSerializer, StudentTransactionSerializer, StudentBonusSerializer, \
     StudentBalanceReportSerializer, StudentBonusUpdateSerializer, StudentBalanceAdjustmentUpdateSerializer, \
-    StudentIdListSerializer, StudentTransferToGroupSerializer
+    StudentIdListSerializer, StudentTransferToGroupSerializer, StudentMassTransferSerializer
 from students.services import add_students_to_group, update_group_students_list, \
     create_group_lessons_by_study_day, create_student_visit, delete_student_visit, \
     delete_group_lessons_by_study_date, update_study_day, increase_student_balance, decrease_student_balance, \
     add_student_to_groups, create_student_bonus, handle_student_bonus_delete, \
     get_student_debit_credit_report, recalculate_group_transactions, generate_student_account_number, \
-    transfer_student_to_group
+    transfer_student_to_group, mass_transfer_students
 from user.enums import UserType
 
 
@@ -390,3 +390,25 @@ class SendSmsToDebtors(APIView):
             SMSService().send_mass_sms_with_individual_message(student_messages)
 
             return Response(data={'detail': "Сообщения успешно доставлены"}, status=200)
+
+
+class MassTransferStudents(APIView):
+    """Массовый перенос студентов между группами (перевод на следующий класс).
+
+    dry_run=true — предпросмотр: те же расчёты (возврат старой группы,
+    до-начисление новой), без записи в БД.
+    """
+
+    @extend_schema(request=StudentMassTransferSerializer())
+    def post(self, request, *args, **kwargs):
+        # Массовая денежная операция — только админ и менеджер.
+        if request.user.user_type not in [UserType.ADMIN, UserType.MANAGER]:
+            return Response(
+                data={'detail': 'Недостаточно прав для массового переноса студентов'},
+                status=403,
+            )
+
+        serializer = StudentMassTransferSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        result = mass_transfer_students(**serializer.validated_data)
+        return Response(data=result, status=200)

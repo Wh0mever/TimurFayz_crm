@@ -48,6 +48,10 @@ urlpatterns = [
                     }
                 )
             ),
+            path(
+                'mass-transfer/',
+                api_views.MassTransferStudents.as_view()
+            ),
         ])
     ),
     path(
