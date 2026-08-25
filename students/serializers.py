@@ -163,11 +163,11 @@ class StudentSerializer(DynamicFieldsSerializerMixin, serializers.ModelSerialize
     #     return value
 
     def get_group_names(self, obj: Student):
-        groups = obj.groups.values_list('group__name', flat=True)
+        groups = obj.groups.filter(group__is_deleted=False, group__is_active=True).values_list('group__name', flat=True)
         return groups
 
     def get_group_ids(self, obj: Student):
-        groups = obj.groups.values_list('group_id', flat=True)
+        groups = obj.groups.filter(group__is_deleted=False, group__is_active=True).values_list('group_id', flat=True)
         return groups
 
 
@@ -236,9 +236,15 @@ class StudentTransactionSerializer(DynamicFieldsSerializerMixin, serializers.Mod
 
 
 class StudentBonusSerializer(DynamicFieldsSerializerMixin, serializers.ModelSerializer):
+    student_obj = StudentSerializer(
+        source='student',
+        read_only=True,
+        fields=('id', 'full_name', 'balance', 'phone_number', 'parent_phone_number')
+    )
+
     class Meta:
         model = StudentBonus
-        fields = ('id', 'student', 'amount', 'comment', 'created_at', 'created_user', 'marked_for_delete')
+        fields = ('id', 'student', 'student_obj', 'amount', 'comment', 'created_at', 'created_user', 'marked_for_delete')
         read_only_fields = ('id', 'created_at', 'created_user')
 
 

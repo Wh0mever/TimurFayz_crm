@@ -8,7 +8,7 @@ from rest_framework.filters import SearchFilter, OrderingFilter
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.viewsets import ModelViewSet
-
+from django.utils import timezone
 from base.api_views import MultiSerializerViewSetMixin, CustomPagination, DestroyFlagsViewSetMixin
 from base.sms_service import SMSService
 from students.enums import Gender, DaysOfWeek
@@ -68,7 +68,6 @@ class StudentViewSet(MultiSerializerViewSetMixin, DestroyFlagsViewSetMixin, Mode
                     .values('joined_date')[:1]
                 )
             )
-
         return qs
 
     def create(self, request, *args, **kwargs):
@@ -121,7 +120,17 @@ class StudentViewSet(MultiSerializerViewSetMixin, DestroyFlagsViewSetMixin, Mode
         return Response(data={
             'gender_options': gender_options,
         })
-
+   
+   
+    def destroy(self, request, *args, **kwargs):
+        obj = self.get_object()
+        obj.is_deleted = True
+        obj.is_active = False
+        obj.deleted_user = request.user
+        obj.deleted_at = timezone.now()
+        obj.account_number = None
+        obj.save()
+        return Response(status=204)
 
 class StudyGroupViewSet(MultiSerializerViewSetMixin, DestroyFlagsViewSetMixin, ModelViewSet):
     queryset = StudyGroup.objects.get_available()

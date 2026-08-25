@@ -35,6 +35,7 @@ def create_payment(
         created_user, payment_date, student=None, outlay=None, payme_transaction_id=None, comment=""
 ):
     with transaction.atomic():
+        print('payment_create service start')
         payment = Payment(
             payment_type=payment_type,
             payment_method=payment_method,
@@ -54,6 +55,7 @@ def create_payment(
             if not outlay:
                 raise PaymentSourceNotGiven("Необходимо указать причину расхода")
             payment.outlay = outlay
+        print("payment created")
         payment.save()
         add_payment_to_cash(payment)
     return payment
@@ -80,4 +82,4 @@ def process_student_payment_delete(payment: Payment):
 
 def send_sms_to_student(student, message):
     phone_numbers = [num for num in [student.phone_number, student.parent_phone_number] if num]
-    SMSService().send_mass_sms(phone_numbers, message)
+    #SMSService().send_mass_sms(phone_numbers, message)

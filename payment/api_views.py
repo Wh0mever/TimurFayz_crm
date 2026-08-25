@@ -32,6 +32,7 @@ class PaymentViewSet(MultiSerializerViewSetMixin, DestroyFlagsViewSetMixin, Mode
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        print("payment create view start")
         payment = create_payment(**serializer.validated_data, created_user=request.user)
         serializer.instance = payment
         return Response(serializer.data, status=201)

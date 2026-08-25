@@ -195,6 +195,14 @@ class StudentBonusFilter(filters.FilterSet):
         queryset=User.objects.all(),
         field_name='created_user'
     )
+    start_date = filters.DateTimeFilter(
+        field_name='created_at',
+        lookup_expr='gte'
+    )
+    end_date = filters.DateTimeFilter(
+        field_name='created_at',
+        lookup_expr='lte'
+    )
 
     class Meta:
         model = StudentBonus
