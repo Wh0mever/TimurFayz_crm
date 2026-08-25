@@ -28,7 +28,8 @@ from students.services import add_students_to_group, update_group_students_list,
     delete_group_lessons_by_study_date, update_study_day, increase_student_balance, decrease_student_balance, \
     add_student_to_groups, create_student_bonus, handle_student_bonus_delete, \
     get_student_debit_credit_report, recalculate_group_transactions, generate_student_account_number, \
-    transfer_student_to_group, mass_transfer_students, mass_delete_students, mass_restore_students
+    transfer_student_to_group, mass_transfer_students, mass_delete_students, mass_restore_students, \
+    MassOperationBackupError
 from user.enums import UserType
 
 
@@ -409,7 +410,13 @@ class MassTransferStudents(APIView):
 
         serializer = StudentMassTransferSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        result = mass_transfer_students(**serializer.validated_data)
+        try:
+            result = mass_transfer_students(**serializer.validated_data)
+        except MassOperationBackupError as e:
+            return Response(
+                data={'detail': 'Не удалось создать бэкап — перенос отменён. %s' % e},
+                status=500,
+            )
         return Response(data=result, status=200)
 
 
@@ -431,8 +438,19 @@ class MassDeleteStudents(APIView):
 
         serializer = StudentIdsRequiredSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        deleted = mass_delete_students(serializer.validated_data['student_ids'], user=request.user)
-        return Response(data={'deleted': deleted, 'count': len(deleted)}, status=200)
+        try:
+            deleted, backup_file = mass_delete_students(
+                serializer.validated_data['student_ids'], user=request.user,
+            )
+        except MassOperationBackupError as e:
+            return Response(
+                data={'detail': 'Не удалось создать бэкап — удаление отменено. %s' % e},
+                status=500,
+            )
+        return Response(
+            data={'deleted': deleted, 'count': len(deleted), 'backup_file': backup_file},
+            status=200,
+        )
 
 
 class MassRestoreStudents(APIView):
@@ -449,5 +467,14 @@ class MassRestoreStudents(APIView):
 
         serializer = StudentIdsRequiredSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        restored = mass_restore_students(serializer.validated_data['student_ids'])
-        return Response(data={'restored': restored, 'count': len(restored)}, status=200)
+        try:
+            restored, backup_file = mass_restore_students(serializer.validated_data['student_ids'])
+        except MassOperationBackupError as e:
+            return Response(
+                data={'detail': 'Не удалось создать бэкап — восстановление отменено. %s' % e},
+                status=500,
+            )
+        return Response(
+            data={'restored': restored, 'count': len(restored), 'backup_file': backup_file},
+            status=200,
+        )
