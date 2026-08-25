@@ -52,6 +52,14 @@ urlpatterns = [
                 'mass-transfer/',
                 api_views.MassTransferStudents.as_view()
             ),
+            path(
+                'mass-delete/',
+                api_views.MassDeleteStudents.as_view()
+            ),
+            path(
+                'mass-restore/',
+                api_views.MassRestoreStudents.as_view()
+            ),
         ])
     ),
     path(

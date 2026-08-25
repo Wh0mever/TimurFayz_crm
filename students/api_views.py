@@ -21,13 +21,14 @@ from students.serializers import StudentSerializer, StudyGroupSerializer, StudyG
     StudyLessonSerializer, StudyGroupUpdateSerializer, StudyGroupDaySerializer, StudentVisitSerializer, \
     StudentBalanceAdjustmentSerializer, StudentTransactionSerializer, StudentBonusSerializer, \
     StudentBalanceReportSerializer, StudentBonusUpdateSerializer, StudentBalanceAdjustmentUpdateSerializer, \
-    StudentIdListSerializer, StudentTransferToGroupSerializer, StudentMassTransferSerializer
+    StudentIdListSerializer, StudentTransferToGroupSerializer, StudentMassTransferSerializer, \
+    StudentIdsRequiredSerializer
 from students.services import add_students_to_group, update_group_students_list, \
     create_group_lessons_by_study_day, create_student_visit, delete_student_visit, \
     delete_group_lessons_by_study_date, update_study_day, increase_student_balance, decrease_student_balance, \
     add_student_to_groups, create_student_bonus, handle_student_bonus_delete, \
     get_student_debit_credit_report, recalculate_group_transactions, generate_student_account_number, \
-    transfer_student_to_group, mass_transfer_students
+    transfer_student_to_group, mass_transfer_students, mass_delete_students, mass_restore_students
 from user.enums import UserType
 
 
@@ -410,3 +411,41 @@ class MassTransferStudents(APIView):
         serializer.is_valid(raise_exception=True)
         result = mass_transfer_students(**serializer.validated_data)
         return Response(data=result, status=200)
+
+
+class MassDeleteStudents(APIView):
+    """Массовое мягкое удаление студентов (галочки в списке).
+
+    account_number сохраняется — mass-restore возвращает студентов
+    ровно в исходное состояние («Отмена» после удаления).
+    """
+
+    @extend_schema(request=StudentIdsRequiredSerializer())
+    def post(self, request, *args, **kwargs):
+        if request.user.user_type not in [UserType.ADMIN, UserType.MANAGER]:
+            return Response(
+                data={'detail': 'Недостаточно прав для массового удаления студентов'},
+                status=403,
+            )
+
+        serializer = StudentIdsRequiredSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        deleted = mass_delete_students(serializer.validated_data['student_ids'], user=request.user)
+        return Response(data={'deleted': deleted, 'count': len(deleted)}, status=200)
+
+
+class MassRestoreStudents(APIView):
+    """Отмена массового удаления: восстановление мягко удалённых студентов."""
+
+    @extend_schema(request=StudentIdsRequiredSerializer())
+    def post(self, request, *args, **kwargs):
+        if request.user.user_type not in [UserType.ADMIN, UserType.MANAGER]:
+            return Response(
+                data={'detail': 'Недостаточно прав для восстановления студентов'},
+                status=403,
+            )
+
+        serializer = StudentIdsRequiredSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        restored = mass_restore_students(serializer.validated_data['student_ids'])
+        return Response(data={'restored': restored, 'count': len(restored)}, status=200)
