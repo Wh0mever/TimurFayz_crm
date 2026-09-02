@@ -401,13 +401,8 @@ class MassTransferStudents(APIView):
 
     @extend_schema(request=StudentMassTransferSerializer())
     def post(self, request, *args, **kwargs):
-        # Массовая денежная операция — ТОЛЬКО администратор (требование клиента).
-        if request.user.user_type != UserType.ADMIN:
-            return Response(
-                data={'detail': 'Массовый перенос доступен только администратору'},
-                status=403,
-            )
-
+        # Перенос доступен всем ролям (решение клиента, 2026-09-03) — как и
+        # одиночный перевод. Массовое удаление при этом остаётся только у ADMIN.
         serializer = StudentMassTransferSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         try:
