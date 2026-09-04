@@ -186,6 +186,7 @@ class StudyGroupDetailSerializer(serializers.ModelSerializer):
             'price',
             'teacher',
             'teacher_obj',
+            'department',
             'students',
         )
 
