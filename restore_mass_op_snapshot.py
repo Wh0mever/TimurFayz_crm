@@ -26,7 +26,7 @@ django.setup()
 from django.core import serializers as dj_serializers
 from django.db import transaction
 
-from students.models import StudentToGroup, StudentTransaction
+from students.models import StudentToGroup, StudentTransaction, StudyGroup
 
 
 def main():
@@ -58,6 +58,13 @@ def main():
             for obj in dj_serializers.deserialize('json', snapshot[section]):
                 obj.save()
                 restored += 1
+
+        # Группа, созданная этим переносом («Создать новую группу»), после отката
+        # осталась бы пустым клоном — мягко удаляем её.
+        created_id = snapshot.get('created_group_id')
+        if created_id:
+            n = StudyGroup.objects.filter(id=created_id).update(is_deleted=True, is_active=False)
+            print('Созданная переносом группа id=%s помечена удалённой: %s' % (created_id, bool(n)))
 
     print('Готово: восстановлено объектов: %d' % restored)
 

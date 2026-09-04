@@ -301,6 +301,9 @@ class StudentMassTransferSerializer(serializers.Serializer):
     new_group = NewGroupForTransferSerializer(required=False)
     joined_date = serializers.DateField(required=True)
     dry_run = serializers.BooleanField(default=False)
+    # суммы из предпросмотра — сервер сверит их перед применением
+    expected_charge_sum = serializers.DecimalField(max_digits=18, decimal_places=2, required=False)
+    expected_refund_sum = serializers.DecimalField(max_digits=18, decimal_places=2, required=False)
 
     def validate(self, attrs):
         group_to = attrs.get('group_to')
@@ -309,6 +312,12 @@ class StudentMassTransferSerializer(serializers.Serializer):
             raise serializers.ValidationError('Укажите либо целевую группу, либо данные новой группы')
         if group_to is not None and attrs['group_from'] == group_to:
             raise serializers.ValidationError('Группа-источник и целевая группа не могут совпадать')
+        start = group_to.start_date if group_to else new_group['start_date']
+        end = group_to.end_date if group_to else new_group['end_date']
+        if not (start <= attrs['joined_date'] <= end):
+            raise serializers.ValidationError(
+                'Дата зачисления должна быть в пределах дат обучения целевой группы (%s — %s)' % (start, end)
+            )
         return attrs
 
 

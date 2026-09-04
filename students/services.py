@@ -427,6 +427,19 @@ class MassOperationBackupError(Exception):
     """Бэкап перед массовой операцией не создан — операция должна быть отменена."""
 
 
+class MassTransferValidationError(Exception):
+    """Логическая ошибка массового переноса — ответ 400 с понятным текстом."""
+
+
+def _annotate_snapshot(path: str, **extra):
+    """Дописывает в уже записанный снимок служебные поля (например, id созданной группы)."""
+    with gzip.open(path, 'rt', encoding='utf-8') as f:
+        payload = json.load(f)
+    payload.update(extra)
+    with gzip.open(path, 'wt', encoding='utf-8') as f:
+        json.dump(payload, f, ensure_ascii=False)
+
+
 def create_mass_operation_snapshot(tag: str, student_ids: Iterable, operation_params: dict = None) -> str:
     """Файловый бэкап затронутых записей ПЕРЕД массовой операцией.
 
@@ -462,7 +475,8 @@ def create_mass_operation_snapshot(tag: str, student_ids: Iterable, operation_pa
 
 
 def mass_transfer_students(group_from: StudyGroup, student_ids: Iterable, joined_date: date,
-                           group_to: StudyGroup = None, dry_run: bool = False, new_group: dict = None):
+                           group_to: StudyGroup = None, dry_run: bool = False, new_group: dict = None,
+                           expected_charge_sum: Decimal = None, expected_refund_sum: Decimal = None):
     """Массовый перенос студентов между группами (перевод на следующий класс).
 
     Оркестрация боевого transfer_student_to_group: никакой новой денежной логики.
@@ -481,7 +495,17 @@ def mass_transfer_students(group_from: StudyGroup, student_ids: Iterable, joined
     # клон отдела/преподавателя/расписания текущей группы, свои даты и цена).
     target_price = group_to.price if group_to else Decimal(str(new_group['price']))
     target_name = group_to.name if group_to else new_group['name']
+    target_start = group_to.start_date if group_to else new_group['start_date']
+    target_end = group_to.end_date if group_to else new_group['end_date']
     new_group_meta = {k: str(v) for k, v in new_group.items()} if new_group else None
+
+    # Дата зачисления обязана лежать в окне обучения целевой группы — иначе
+    # до-начисления пошли бы за месяцы, когда группы ещё не было.
+    if not (target_start <= joined_date <= target_end):
+        raise MassTransferValidationError(
+            'Дата зачисления должна быть в пределах дат обучения целевой группы (%s — %s)'
+            % (target_start, target_end)
+        )
 
     today = datetime.today()
     months_passed = get_diff_month(joined_date, today)
@@ -521,6 +545,20 @@ def mass_transfer_students(group_from: StudyGroup, student_ids: Iterable, joined
             })
         else:
             to_transfer.append(student)
+
+    if new_group and not to_transfer and not dry_run:
+        raise MassTransferValidationError('Нет студентов для переноса — новая группа не создана')
+
+    # Контроль устаревшего предпросмотра: суммы считаются заново ДО любых изменений
+    # и сверяются с теми, что подтвердил пользователь.
+    if not dry_run and (expected_charge_sum is not None or expected_refund_sum is not None):
+        actual_refund = sum((_transfer_refund_sum(s, group_from, joined_date) for s in to_transfer), Decimal(0))
+        actual_charge = target_price * back_months * len(to_transfer)
+        if (expected_charge_sum is not None and Decimal(expected_charge_sum) != actual_charge) or \
+                (expected_refund_sum is not None and Decimal(expected_refund_sum) != actual_refund):
+            raise MassTransferValidationError(
+                'Суммы изменились с момента предпросмотра — обновите предпросмотр и подтвердите заново'
+            )
 
     rows = []
     if dry_run:
@@ -580,7 +618,15 @@ def mass_transfer_students(group_from: StudyGroup, student_ids: Iterable, joined
                     'balance_after': str(student.balance),
                 })
 
+        if new_group and backup_path:
+            _annotate_snapshot(backup_path, created_group_id=group_to.id)
+
     warnings = []
+    if target_start > today.date() and target_start.day != 1:
+        warnings.append(
+            'Целевая группа начинается не с 1-го числа (%s): первый месяц не будет выставлен '
+            'автоматически — крон списывает 1-го числа только уже начавшиеся группы.' % target_start
+        )
     if target_price == 0:
         warnings.append(
             'Цена целевой группы — 0 сум: ежемесячные списания будут нулевыми. '
