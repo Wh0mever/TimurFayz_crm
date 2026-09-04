@@ -31,7 +31,7 @@ from students.services import add_students_to_group, update_group_students_list,
     add_student_to_groups, create_student_bonus, handle_student_bonus_delete, \
     get_student_debit_credit_report, recalculate_group_transactions, generate_student_account_number, \
     transfer_student_to_group, mass_transfer_students, mass_delete_students, mass_restore_students, \
-    MassOperationBackupError
+    MassOperationBackupError, MassTransferValidationError
 from user.enums import UserType
 
 
@@ -409,6 +409,8 @@ class MassTransferStudents(APIView):
         serializer.is_valid(raise_exception=True)
         try:
             result = mass_transfer_students(**serializer.validated_data)
+        except MassTransferValidationError as e:
+            return Response(data={'detail': str(e)}, status=400)
         except MassOperationBackupError as e:
             return Response(
                 data={'detail': 'Не удалось создать бэкап — перенос отменён. %s' % e},
