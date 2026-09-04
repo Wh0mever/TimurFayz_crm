@@ -461,8 +461,8 @@ def create_mass_operation_snapshot(tag: str, student_ids: Iterable, operation_pa
         raise MassOperationBackupError(str(e))
 
 
-def mass_transfer_students(group_from: StudyGroup, group_to: StudyGroup, student_ids: Iterable,
-                           joined_date: date, dry_run: bool = False):
+def mass_transfer_students(group_from: StudyGroup, student_ids: Iterable, joined_date: date,
+                           group_to: StudyGroup = None, dry_run: bool = False, new_group: dict = None):
     """Массовый перенос студентов между группами (перевод на следующий класс).
 
     Оркестрация боевого transfer_student_to_group: никакой новой денежной логики.
@@ -474,6 +474,15 @@ def mass_transfer_students(group_from: StudyGroup, group_to: StudyGroup, student
     - применение — в одной транзакции: упало на любом студенте → откатилось всё,
       повторный запуск того же запроса — no-op по уже перенесённым.
     """
+    if (group_to is None) == (new_group is None):
+        raise ValueError('Нужно указать либо group_to, либо new_group')
+
+    # Целевая группа: существующая или новая (создаётся при применении —
+    # клон отдела/преподавателя/расписания текущей группы, свои даты и цена).
+    target_price = group_to.price if group_to else Decimal(str(new_group['price']))
+    target_name = group_to.name if group_to else new_group['name']
+    new_group_meta = {k: str(v) for k, v in new_group.items()} if new_group else None
+
     today = datetime.today()
     months_passed = get_diff_month(joined_date, today)
     back_months = months_passed + 1 if months_passed >= 0 else 0
@@ -489,7 +498,7 @@ def mass_transfer_students(group_from: StudyGroup, group_to: StudyGroup, student
     already_in_target = set(
         StudentToGroup.objects.filter(group=group_to, student_id__in=eligible_ids)
         .values_list('student_id', flat=True)
-    )
+    ) if group_to else set()
 
     skipped = []
     missing_ids = requested_ids - eligible_ids
@@ -517,7 +526,7 @@ def mass_transfer_students(group_from: StudyGroup, group_to: StudyGroup, student
     if dry_run:
         for student in to_transfer:
             refund = _transfer_refund_sum(student, group_from, joined_date)
-            charge = group_to.price * back_months
+            charge = target_price * back_months
             rows.append({
                 'student_id': student.id,
                 'full_name': student.full_name,
@@ -532,11 +541,26 @@ def mass_transfer_students(group_from: StudyGroup, group_to: StudyGroup, student
             [student.id for student in to_transfer],
             {
                 'group_from': group_from.id,
-                'group_to': group_to.id,
+                'group_to': group_to.id if group_to else None,
+                'new_group': new_group_meta,
                 'joined_date': joined_date.isoformat(),
             },
         )
         with transaction.atomic():
+            if new_group:
+                group_to = StudyGroup.objects.create(
+                    name=new_group['name'],
+                    start_date=new_group['start_date'],
+                    end_date=new_group['end_date'],
+                    price=new_group['price'],
+                    department=group_from.department,
+                    teacher=group_from.teacher,
+                )
+                # расписание (дни/время) переносим как есть, уроки/визиты — нет
+                StudyGroupDay.objects.bulk_create([
+                    StudyGroupDay(group=group_to, day_of_week=d.day_of_week, start_time=d.start_time)
+                    for d in group_from.study_days.all()
+                ])
             for student in to_transfer:
                 balance_before = student.balance
                 refund = _transfer_refund_sum(student, group_from, joined_date)
@@ -557,7 +581,7 @@ def mass_transfer_students(group_from: StudyGroup, group_to: StudyGroup, student
                 })
 
     warnings = []
-    if group_to.price == 0:
+    if target_price == 0:
         warnings.append(
             'Цена целевой группы — 0 сум: ежемесячные списания будут нулевыми. '
             'Проверьте цену группы до 1-го числа.'
@@ -565,7 +589,7 @@ def mass_transfer_students(group_from: StudyGroup, group_to: StudyGroup, student
     if back_months > 0 and to_transfer:
         warnings.append(
             f'Дата зачисления в прошлом: каждому студенту будет до-начислено '
-            f'{back_months} мес. × {group_to.price} сум по новой группе.'
+            f'{back_months} мес. × {target_price} сум по новой группе.'
         )
     total_refund = sum(Decimal(r['refund']) for r in rows) if rows else Decimal(0)
     if total_refund > 0:
@@ -577,7 +601,8 @@ def mass_transfer_students(group_from: StudyGroup, group_to: StudyGroup, student
     return {
         'dry_run': dry_run,
         'group_from': {'id': group_from.id, 'name': group_from.name},
-        'group_to': {'id': group_to.id, 'name': group_to.name, 'price': str(group_to.price)},
+        'group_to': {'id': group_to.id if group_to else None, 'name': target_name, 'price': str(target_price)},
+        'new_group_created': bool(new_group) and not dry_run,
         'joined_date': joined_date.isoformat(),
         'students': rows,
         'skipped': skipped,
