@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from drf_extra_fields.fields import Base64ImageField
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
@@ -273,15 +275,33 @@ class StudentIdListSerializer(serializers.Serializer):
     )
 
 
+class NewGroupForTransferSerializer(serializers.Serializer):
+    """Новая группа, создаваемая прямо при переносе (клон текущей на новый год)."""
+    name = serializers.CharField(max_length=255)
+    start_date = serializers.DateField()
+    end_date = serializers.DateField()
+    price = serializers.DecimalField(max_digits=15, decimal_places=2, min_value=Decimal('0'))
+
+    def validate(self, attrs):
+        if attrs['end_date'] <= attrs['start_date']:
+            raise serializers.ValidationError('Дата окончания новой группы должна быть позже даты начала')
+        return attrs
+
+
 class StudentMassTransferSerializer(serializers.Serializer):
     student_ids = serializers.ListField(child=serializers.IntegerField(), allow_empty=False)
     group_from = serializers.PrimaryKeyRelatedField(queryset=StudyGroup.objects.all(), required=True)
-    group_to = serializers.PrimaryKeyRelatedField(queryset=StudyGroup.objects.all(), required=True)
+    group_to = serializers.PrimaryKeyRelatedField(queryset=StudyGroup.objects.all(), required=False)
+    new_group = NewGroupForTransferSerializer(required=False)
     joined_date = serializers.DateField(required=True)
     dry_run = serializers.BooleanField(default=False)
 
     def validate(self, attrs):
-        if attrs['group_from'] == attrs['group_to']:
+        group_to = attrs.get('group_to')
+        new_group = attrs.get('new_group')
+        if (group_to is None) == (new_group is None):
+            raise serializers.ValidationError('Укажите либо целевую группу, либо данные новой группы')
+        if group_to is not None and attrs['group_from'] == group_to:
             raise serializers.ValidationError('Группа-источник и целевая группа не могут совпадать')
         return attrs
 
